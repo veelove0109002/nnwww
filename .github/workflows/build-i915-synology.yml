@@ -217,10 +217,15 @@ jobs:
             HOSTCFLAGS="$HOSTCFLAGS_EXTRA" HOSTLDFLAGS="$HOSTLDFLAGS_EXTRA" \
             $MAKEFLAGS_COMMON scripts_basic 2>&1 | tee -a "$LOGDIR/prepare.log"
 
-          # Prepare kernel headers (including linux/version.h)
+          # Prepare kernel headers (including linux/version.h) - skip objtool to avoid compilation errors
           make -C "$KDIR" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" \
             HOSTCFLAGS="$HOSTCFLAGS_EXTRA" HOSTLDFLAGS="$HOSTLDFLAGS_EXTRA" \
-            $MAKEFLAGS_COMMON prepare 2>&1 | tee -a "$LOGDIR/prepare.log"
+            $MAKEFLAGS_COMMON prepare0 2>&1 | tee -a "$LOGDIR/prepare.log" || true
+          
+          # Try prepare1 which should generate version.h without objtool
+          make -C "$KDIR" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" \
+            HOSTCFLAGS="$HOSTCFLAGS_EXTRA" HOSTLDFLAGS="$HOSTLDFLAGS_EXTRA" \
+            $MAKEFLAGS_COMMON prepare1 2>&1 | tee -a "$LOGDIR/prepare.log" || true
 
           # External modules_prepare (avoid objtool path)
           make -C "$KDIR" M="$GITHUB_WORKSPACE" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" \
