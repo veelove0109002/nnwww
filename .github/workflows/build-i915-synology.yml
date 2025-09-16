@@ -123,11 +123,11 @@ jobs:
           # Debug: Show what's actually in the kernel directory
           echo "=== Debugging kernel directory structure ==="
           echo "Contents of /opt/syno/kernel:"
-          find /opt/syno/kernel -maxdepth 3 -type d | head -20
+          find /opt/syno/kernel -maxdepth 3 -type d 2>/dev/null | head -20 || true
           echo "Looking for Makefile files:"
-          find /opt/syno/kernel -name "Makefile" -type f | head -10
+          find /opt/syno/kernel -name "Makefile" -type f 2>/dev/null | head -10 || true
           echo "Looking for arch directories:"
-          find /opt/syno/kernel -name "arch" -type d | head -10
+          find /opt/syno/kernel -name "arch" -type d 2>/dev/null | head -10 || true
 
           # Locate kernel dir: prefer linux-* with arch/ and Makefile
           KERNEL_DIR=""
