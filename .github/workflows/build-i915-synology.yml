@@ -219,6 +219,10 @@ jobs:
           LOGDIR="$GITHUB_WORKSPACE/logs"
           mkdir -p "$LOGDIR"
 
+          # Define host compiler flags
+          HOSTCFLAGS_EXTRA="-Wno-error -Wno-error=use-after-free -Wno-error=stringop-truncation -Wno-error=format-overflow"
+          HOSTLDFLAGS_EXTRA=""
+
           cd "$GITHUB_WORKSPACE"
           echo "Building with KDIR=$KDIR"
           make -C "$KDIR" M="$GITHUB_WORKSPACE" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" \
