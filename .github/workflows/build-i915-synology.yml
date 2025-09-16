@@ -158,7 +158,20 @@ jobs:
                 echo "Potential kernel dir: $dir" >&2
               fi
             done
-            echo "Failed to detect kernel dir (need a dir with Makefile, arch/, and include/)" >&2
+            
+            echo "=== ERROR: Kernel source not found ===" >&2
+            echo "The provided kernel_url appears to contain toolchain files instead of kernel source." >&2
+            echo "Please ensure the kernel_url points to a Synology kernel source tarball" >&2
+            echo "that contains directories like 'arch/', 'include/', 'drivers/', etc." >&2
+            echo "" >&2
+            echo "Current contents of /opt/syno/kernel:" >&2
+            find /opt/syno/kernel -maxdepth 2 -type d | head -20 >&2
+            echo "" >&2
+            echo "Expected kernel source structure should include:" >&2
+            echo "  - arch/ (architecture-specific code)" >&2
+            echo "  - include/ (kernel headers)" >&2
+            echo "  - drivers/ (device drivers)" >&2
+            echo "  - Makefile (main kernel Makefile)" >&2
             exit 1
           fi
           echo "KERNEL_DIR=$KERNEL_DIR" | tee -a $GITHUB_OUTPUT
