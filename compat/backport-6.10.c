@@ -22,10 +22,10 @@
 /* Backport missing macros and functions for older kernels */
 #ifndef DECLARE_SEQ_BUF
 #define DECLARE_SEQ_BUF(name, size) \
-	char __##name##_buf[size] = {}; \
+	char __##name##_buf[(size)] = {}; \
 	struct seq_buf name = { \
 		.buffer = __##name##_buf, \
-		.size = size, \
+		.size = (size), \
 	}
 #endif
 
@@ -178,8 +178,8 @@ bool drm_dp_as_sdp_supported(struct drm_dp_aux *aux, const u8 dpcd[DP_RECEIVER_C
 		return false;
 	if (drm_dp_dpcd_readb(aux, DP_DPRX_FEATURE_ENUMERATION_LIST_CONT_1,
 			      &rx_feature) != 1) {
-		drm_dbg_dp(aux->drm_dev,
-			   "Failed to read DP_DPRX_FEATURE_ENUMERATION_LIST_CONT_1\n");
+		/* For older kernels without drm_dev in aux, use a simple debug */
+		printk(KERN_DEBUG "Failed to read DP_DPRX_FEATURE_ENUMERATION_LIST_CONT_1\n");
 		return false;
 	}
 	return (rx_feature & DP_ADAPTIVE_SYNC_SDP_SUPPORTED);
