@@ -1,0 +1,265 @@
+name: Build i915 for Synology (SR-IOV)
+
+on:
+  workflow_dispatch:
+    inputs:
+      toolchain_url:
+        description: URL to Synology toolchain tarball (matching DSM arch)
+        required: true
+        type: string
+      kernel_url:
+        description: URL to Synology kernel source tarball (matching DSM build, e.g. 5.10.55)
+        required: true
+        type: string
+      syno_config:
+        description: synoconfigs/<platform> to use (e.g. epyc7002, x64, apollolake, geminilake, denverton)
+        required: true
+        default: epyc7002
+        type: string
+      syno_config_path:
+        description: Optional explicit path to config file if synoconfigs not found (relative or absolute)
+        required: false
+        default: ""
+        type: string
+      arch:
+        description: Target ARCH (e.g. x86_64, armv7, aarch64)
+        required: true
+        default: x86_64
+        type: string
+      extra_make_args:
+        description: Extra MAKE args (optional, e.g. V=1)
+        required: false
+        default: ""
+        type: string
+      force_empty_symvers:
+        description: Use empty Module.symvers (skip kernel modules build)
+        required: false
+        default: true
+        type: boolean
+      release_tag:
+        description: Optional release tag (default auto-generated)
+        required: false
+        default: ""
+        type: string
+      release_name:
+        description: Optional release name (default auto-generated)
+        required: false
+        default: ""
+        type: string
+      prerelease:
+        description: Mark release as prerelease
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      WORKSPACE: ${{ github.workspace }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential bison flex bc libelf-dev rsync cpio python3 git file pkg-config \
+            xz-utils tar curl ca-certificates
+
+      - name: Create directories
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          mkdir -p /opt/syno/toolchain /opt/syno/kernel
+
+      - name: Download toolchain
+        run: |
+          echo "Downloading: ${{ inputs.toolchain_url }}"
+          curl -fsSL --retry 5 --retry-delay 3 -o /opt/syno/toolchain.tar "${{ inputs.toolchain_url }}"
+
+      - name: Download kernel source
+        run: |
+          echo "Downloading: ${{ inputs.kernel_url }}"
+          curl -fsSL --retry 5 --retry-delay 3 -o /opt/syno/kernel.tar "${{ inputs.kernel_url }}"
+
+      - name: Extract toolchain
+        run: |
+          set -euo pipefail
+          file /opt/syno/toolchain.tar
+          (tar -xf /opt/syno/toolchain.tar -C /opt/syno/toolchain 2>/dev/null) || \
+          (xz -dc /opt/syno/toolchain.tar | tar -x -C /opt/syno/toolchain) || \
+          (gzip -dc /opt/syno/toolchain.tar | tar -x -C /opt/syno/toolchain)
+          echo "Toolchain contents:" && find /opt/syno/toolchain -maxdepth 4 -type d | sed 's/^/  /'
+
+      - name: Extract kernel source
+        run: |
+          set -euo pipefail
+          file /opt/syno/kernel.tar
+          (tar -xf /opt/syno/kernel.tar -C /opt/syno/kernel 2>/dev/null) || \
+          (xz -dc /opt/syno/kernel.tar | tar -x -C /opt/syno/kernel) || \
+          (gzip -dc /opt/syno/kernel.tar | tar -x -C /opt/syno/kernel)
+          echo "Kernel contents:" && find /opt/syno/kernel -maxdepth 4 -type d | sed 's/^/  /'
+
+      - name: Robustly detect toolchain and kernel directories
+        id: detect
+        run: |
+          set -euo pipefail
+          echo "Scanning for toolchain and kernel..."
+
+          # First, locate any cross gcc under both roots
+          GCC_PATH=$(find /opt/syno/toolchain /opt/syno/kernel -type f -name '*-gcc' 2>/dev/null | head -n1 || true)
+          if [ -z "${GCC_PATH:-}" ]; then
+            echo "Could not find any *-gcc under /opt/syno/toolchain or /opt/syno/kernel" >&2
+            echo "Please check toolchain_url is correct (should be epyc7002 x86_64 toolchain)." >&2
+            exit 1
+          fi
+          BIN_DIR=$(dirname "$GCC_PATH")
+          TOOLCHAIN_DIR=$(dirname "$BIN_DIR")
+          echo "TOOLCHAIN_DIR=$TOOLCHAIN_DIR" | tee -a $GITHUB_OUTPUT
+
+          # Locate kernel dir: prefer linux-* with arch/ and Makefile
+          KERNEL_DIR=""
+          for dir in $(find /opt/syno/kernel /opt/syno/toolchain -maxdepth 4 -type d -name 'linux-*' || true); do
+            if [ -f "$dir/Makefile" ] && [ -d "$dir/arch" ]; then
+              KERNEL_DIR="$dir"; break
+            fi
+          done
+          if [ -z "$KERNEL_DIR" ]; then
+            # Fallback: generic directory with arch/ and Makefile
+            KERNEL_DIR=$(find /opt/syno/kernel /opt/syno/toolchain -maxdepth 4 -type d -exec test -f {}/Makefile \; -exec test -d {}/arch \; -print | head -n1 || true)
+          fi
+          if [ -z "$KERNEL_DIR" ]; then
+            echo "Failed to detect kernel dir (need a dir with Makefile and arch/)" >&2; exit 1
+          fi
+          echo "KERNEL_DIR=$KERNEL_DIR" | tee -a $GITHUB_OUTPUT
+
+          CROSS_COMPILE=$(basename "$GCC_PATH" | sed 's/-gcc$//')-
+          echo "CROSS_COMPILE=$CROSS_COMPILE" | tee -a $GITHUB_OUTPUT
+
+          echo "Summary:"
+          echo "  TOOLCHAIN_DIR=$TOOLCHAIN_DIR"
+          echo "  BIN_DIR=$BIN_DIR"
+          echo "  GCC_PATH=$GCC_PATH"
+          echo "  KERNEL_DIR=$KERNEL_DIR"
+          echo "  CROSS_COMPILE=$CROSS_COMPILE"
+
+      - name: Prepare kernel tree (modules_prepare and Module.symvers)
+        run: |
+          set -euo pipefail
+          export ARCH="${{ inputs.arch }}"
+          export CROSS_COMPILE="${{ steps.detect.outputs.CROSS_COMPILE }}"
+          export PATH="${{ steps.detect.outputs.TOOLCHAIN_DIR }}/bin:$PATH"
+          KDIR="${{ steps.detect.outputs.KERNEL_DIR }}"
+          LOGDIR="$GITHUB_WORKSPACE/logs"
+          mkdir -p "$LOGDIR"
+
+          # Ensure config exists in KDIR
+          if [ -n "${{ inputs.syno_config_path }}" ]; then
+            CFG_PATH="${{ inputs.syno_config_path }}"
+            if [ -f "$CFG_PATH" ]; then
+              cp "$CFG_PATH" "$KDIR/.config"
+            elif [ -f "$KDIR/$CFG_PATH" ]; then
+              cp "$KDIR/$CFG_PATH" "$KDIR/.config"
+            else
+              echo "Provided syno_config_path not found: $CFG_PATH" >&2; exit 1
+            fi
+          else
+            SCONF_DIR=$(find "$KDIR" /opt/syno/kernel -type d -name synoconfigs | head -n1 || true)
+            if [ -n "$SCONF_DIR" ] && [ -f "$SCONF_DIR/${{ inputs.syno_config }}" ]; then
+              cp "$SCONF_DIR/${{ inputs.syno_config }}" "$KDIR/.config"
+            else
+              echo "synoconfigs not found or ${ { inputs.syno_config } } missing." >&2
+              exit 1
+            fi
+          fi
+
+          MAKEFLAGS_COMMON="NO_WERROR=1 HOSTCFLAGS='-Wno-error -Wno-error=use-after-free' SKIP_STACK_VALIDATION=1 NO_OBJTOOL=1 OBJTOOL=/bin/true"
+
+          # Olddefconfig in KDIR
+          make -C "$KDIR" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" $MAKEFLAGS_COMMON olddefconfig 2>&1 | tee -a "$LOGDIR/prepare.log"
+
+          # External modules_prepare (avoid objtool path)
+          make -C "$KDIR" M="$GITHUB_WORKSPACE" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" $MAKEFLAGS_COMMON modules_prepare 2>&1 | tee -a "$LOGDIR/prepare.log"
+
+          if [ ! -f "$KDIR/Module.symvers" ] && [ ! -f Module.symvers ]; then
+            if [ "${{ inputs.force_empty_symvers }}" = "true" ]; then
+              echo "force_empty_symvers=true → creating empty Module.symvers in KDIR" | tee -a "$LOGDIR/prepare.log"
+              : > "$KDIR/Module.symvers"
+            else
+              echo "Attempting to build minimal modules to produce Module.symvers (objtool bypassed)" | tee -a "$LOGDIR/prepare.log"
+              set +e
+              make -C "$KDIR" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" $MAKEFLAGS_COMMON KCFLAGS="-Wno-error" modules -j$(nproc) 2>&1 | tee -a "$LOGDIR/prepare.log"
+              status=${PIPESTATUS[0]}
+              set -e
+              if [ $status -ne 0 ]; then
+                echo "Modules build failed; consider setting force_empty_symvers=true" | tee -a "$LOGDIR/prepare.log"
+                exit $status
+              fi
+            fi
+          fi
+
+      - name: Build i915 (external module)
+        run: |
+          set -euo pipefail
+          export ARCH="${{ inputs.arch }}"
+          export CROSS_COMPILE="${{ steps.detect.outputs.CROSS_COMPILE }}"
+          export PATH="${{ steps.detect.outputs.TOOLCHAIN_DIR }}/bin:$PATH"
+          KDIR="${{ steps.detect.outputs.KERNEL_DIR }}"
+          LOGDIR="$GITHUB_WORKSPACE/logs"
+          mkdir -p "$LOGDIR"
+
+          cd "$GITHUB_WORKSPACE"
+          echo "Building with KDIR=$KDIR"
+          make -C "$KDIR" M="$GITHUB_WORKSPACE" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" OBJTOOL=/bin/true modules -j$(nproc) ${{ inputs.extra_make_args }} 2>&1 | tee -a "$LOGDIR/module_build.log"
+
+      - name: Collect artifacts (.ko files)
+        run: |
+          set -euo pipefail
+          ART="$GITHUB_WORKSPACE/artifacts"
+          mkdir -p "$ART"
+          find "$GITHUB_WORKSPACE" -type f -name '*.ko' -print -exec cp -v {} "$ART" \;
+          echo "Collected:" && ls -l "$ART"
+
+      - name: Compute release metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.release_tag }}"
+          NAME="${{ inputs.release_name }}"
+          if [ -z "$TAG" ]; then
+            TAG="i915-${{ inputs.syno_config }}-${{ inputs.arch }}-${{ github.run_number }}"
+          fi
+          if [ -z "$NAME" ]; then
+            NAME="i915 for Synology (${{ inputs.syno_config }}, ${{ inputs.arch }}) #${{ github.run_number }}"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.name }}
+          draft: false
+          prerelease: ${{ inputs.prerelease }}
+          files: artifacts/*.ko
+
+      - name: Upload artifacts (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: synology-i915-${{ inputs.syno_config }}-${{ inputs.arch }}
+          path: artifacts/*.ko
+          if-no-files-found: error
+
+      - name: Upload build logs (on failure)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            logs/**
+            artifacts/**
+          if-no-files-found: ignore
