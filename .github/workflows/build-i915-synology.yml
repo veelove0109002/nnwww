@@ -176,13 +176,19 @@ jobs:
             fi
           fi
 
-          MAKEFLAGS_COMMON="NO_WERROR=1 HOSTCFLAGS='-Wno-error -Wno-error=use-after-free' SKIP_STACK_VALIDATION=1 NO_OBJTOOL=1 OBJTOOL=/bin/true"
+          MAKEFLAGS_COMMON="NO_WERROR=1 SKIP_STACK_VALIDATION=1 NO_OBJTOOL=1 OBJTOOL=/bin/true"
+          HOSTCFLAGS_EXTRA="-Wno-error -Wno-error=use-after-free -Wno-error=stringop-truncation -Wno-error=format-overflow"
+          HOSTLDFLAGS_EXTRA=""
 
           # Olddefconfig in KDIR
-          make -C "$KDIR" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" $MAKEFLAGS_COMMON olddefconfig 2>&1 | tee -a "$LOGDIR/prepare.log"
+          make -C "$KDIR" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" \
+            HOSTCFLAGS="$HOSTCFLAGS_EXTRA" HOSTLDFLAGS="$HOSTLDFLAGS_EXTRA" \
+            $MAKEFLAGS_COMMON olddefconfig 2>&1 | tee -a "$LOGDIR/prepare.log"
 
           # External modules_prepare (avoid objtool path)
-          make -C "$KDIR" M="$GITHUB_WORKSPACE" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" $MAKEFLAGS_COMMON modules_prepare 2>&1 | tee -a "$LOGDIR/prepare.log"
+          make -C "$KDIR" M="$GITHUB_WORKSPACE" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" \
+            HOSTCFLAGS="$HOSTCFLAGS_EXTRA" HOSTLDFLAGS="$HOSTLDFLAGS_EXTRA" \
+            $MAKEFLAGS_COMMON modules_prepare 2>&1 | tee -a "$LOGDIR/prepare.log"
 
           if [ ! -f "$KDIR/Module.symvers" ] && [ ! -f Module.symvers ]; then
             if [ "${{ inputs.force_empty_symvers }}" = "true" ]; then
@@ -191,7 +197,9 @@ jobs:
             else
               echo "Attempting to build minimal modules to produce Module.symvers (objtool bypassed)" | tee -a "$LOGDIR/prepare.log"
               set +e
-              make -C "$KDIR" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" $MAKEFLAGS_COMMON KCFLAGS="-Wno-error" modules -j$(nproc) 2>&1 | tee -a "$LOGDIR/prepare.log"
+              make -C "$KDIR" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" \
+                HOSTCFLAGS="$HOSTCFLAGS_EXTRA" HOSTLDFLAGS="$HOSTLDFLAGS_EXTRA" \
+                $MAKEFLAGS_COMMON KCFLAGS="-Wno-error" modules -j$(nproc) 2>&1 | tee -a "$LOGDIR/prepare.log"
               status=${PIPESTATUS[0]}
               set -e
               if [ $status -ne 0 ]; then
@@ -213,7 +221,10 @@ jobs:
 
           cd "$GITHUB_WORKSPACE"
           echo "Building with KDIR=$KDIR"
-          make -C "$KDIR" M="$GITHUB_WORKSPACE" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" OBJTOOL=/bin/true modules -j$(nproc) ${{ inputs.extra_make_args }} 2>&1 | tee -a "$LOGDIR/module_build.log"
+          make -C "$KDIR" M="$GITHUB_WORKSPACE" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" \
+            HOSTCFLAGS="$HOSTCFLAGS_EXTRA" HOSTLDFLAGS="$HOSTLDFLAGS_EXTRA" \
+            NO_WERROR=1 SKIP_STACK_VALIDATION=1 NO_OBJTOOL=1 OBJTOOL=/bin/true \
+            modules -j$(nproc) ${{ inputs.extra_make_args }} 2>&1 | tee -a "$LOGDIR/module_build.log"
 
       - name: Collect artifacts (.ko files)
         run: |
