@@ -10,24 +10,22 @@
 #include <drm/drm_modes.h>
 #include <drm/drm_connector.h>
 
-/* Forward declarations and definitions for compatibility */
+/* Forward declarations only - actual definitions are in backport files */
 struct drm_edid;
+struct drm_edid_product_id;
 
 #ifndef EDID_LENGTH
 #define EDID_LENGTH 128
 #endif
 
-struct drm_edid_product_id {
-	__be16 manufacturer_name;
-	__le16 product_code;
-	__le32 serial_number;
-	u8 week_of_manufacture;
-	u8 year_of_manufacture;
-};
-
-/* Stub function declarations */
+/* Function declarations - only if not already declared */
+#ifndef _DRM_EDID_FUNCTIONS_DECLARED
+#define _DRM_EDID_FUNCTIONS_DECLARED
 void drm_edid_get_product_id(const struct drm_edid *drm_edid,
 			     struct drm_edid_product_id *id);
+void drm_edid_print_product_id(struct drm_printer *p,
+			       const struct drm_edid_product_id *id, bool raw);
+#endif
 #endif
 
 #endif
