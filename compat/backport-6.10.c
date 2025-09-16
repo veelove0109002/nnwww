@@ -18,6 +18,35 @@
 #include <drm/drm_client.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_edid.h>
+
+/* Backport missing macros and functions for older kernels */
+#ifndef DECLARE_SEQ_BUF
+#define DECLARE_SEQ_BUF(name, size) \
+	char __##name##_buf[size] = {}; \
+	struct seq_buf name = { \
+		.buffer = __##name##_buf, \
+		.size = size, \
+	}
+#endif
+
+#ifndef seq_buf_str
+static inline const char *seq_buf_str(struct seq_buf *s)
+{
+	s->buffer[s->len] = '\0';
+	return s->buffer;
+}
+#endif
+
+/* Stub implementations for missing functions */
+#ifndef drm_edid_decode_mfg_id
+static inline void drm_edid_decode_mfg_id(u16 mfg_id, char vend[4])
+{
+	vend[0] = '@' + ((mfg_id >> 10) & 0x1f);
+	vend[1] = '@' + ((mfg_id >> 5) & 0x1f);
+	vend[2] = '@' + (mfg_id & 0x1f);
+	vend[3] = '\0';
+}
+#endif
 #include <drm/drm_print.h>
 #include <drm/drm_vblank.h>
 

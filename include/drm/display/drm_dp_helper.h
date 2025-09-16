@@ -17,6 +17,31 @@ ssize_t drm_dp_vsc_sdp_pack(const struct drm_dp_vsc_sdp *vsc,
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
+
+/* Define missing DP constants for older kernels */
+#ifndef DP_CAP_ANSI_128B132B
+#define DP_CAP_ANSI_128B132B                    0x01
+#endif
+
+#ifndef DP_SINGLE_STREAM_SIDEBAND_MSG
+#define DP_SINGLE_STREAM_SIDEBAND_MSG           0x40
+#endif
+
+#ifndef DP_DPRX_FEATURE_ENUMERATION_LIST_CONT_1
+#define DP_DPRX_FEATURE_ENUMERATION_LIST_CONT_1 0x2214
+#endif
+
+#ifndef DP_ADAPTIVE_SYNC_SDP_SUPPORTED
+#define DP_ADAPTIVE_SYNC_SDP_SUPPORTED          0x01
+#endif
+
+/* Define missing operation mode enum */
+enum operation_mode {
+	ADAPTIVE_SYNC_SDP_OPERATION_MODE_NONE = 0,
+	ADAPTIVE_SYNC_SDP_OPERATION_MODE_FIXED_REFRESH_RATE = 1,
+	ADAPTIVE_SYNC_SDP_OPERATION_MODE_VARIABLE_REFRESH_RATE = 2,
+};
+
 /**
  * struct drm_dp_as_sdp - drm DP Adaptive Sync SDP
  *

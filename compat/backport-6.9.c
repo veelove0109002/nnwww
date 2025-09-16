@@ -16,6 +16,33 @@
 
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 9, 0)
+
+/* Backport size_mul function for older kernels */
+#ifndef size_mul
+static inline size_t size_mul(size_t a, size_t b)
+{
+	size_t bytes;
+	
+	if (check_mul_overflow(a, b, &bytes))
+		return SIZE_MAX;
+	return bytes;
+}
+#endif
+
+/* Backport missing DP functions for older kernels */
+#ifndef drm_dp_bw_channel_coding_efficiency
+static inline int drm_dp_bw_channel_coding_efficiency(bool is_uhbr)
+{
+	return is_uhbr ? 96875 : 80000;
+}
+#endif
+
+#ifndef drm_dp_is_uhbr_rate
+static inline bool drm_dp_is_uhbr_rate(int link_rate)
+{
+	return link_rate >= 1000000; /* 10 Gbps */
+}
+#endif
 /**
  * kmemdup_array - duplicate a given array.
  *
