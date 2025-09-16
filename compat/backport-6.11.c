@@ -9,7 +9,15 @@
  */
 
 #include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
 #include <linux/string_choices.h>
+#else
+/* Backport string_choices.h functionality for older kernels */
+#define str_yes_no(v) ((v) ? "yes" : "no")
+#define str_on_off(v) ((v) ? "on" : "off")
+#define str_enable_disable(v) ((v) ? "enable" : "disable")
+#define str_enabled_disabled(v) ((v) ? "enabled" : "disabled")
+#endif
 #include <uapi/linux/sched/types.h>
 
 #include <drm/drm_plane.h>

@@ -1,5 +1,10 @@
 #include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 #include_next <drm/display/drm_dp_helper.h>
+#else
+/* For older kernels, include the legacy header */
+#include <drm/drm_dp_helper.h>
+#endif
 
 #ifndef _BACKPORT_DRM_DISPLAY_DRM_DP_HELPER_H
 #define _BACKPORT_DRM_DISPLAY_DRM_DP_HELPER_H
