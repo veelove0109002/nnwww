@@ -21,11 +21,11 @@
 
 /* Backport missing macros and functions for older kernels */
 #ifndef DECLARE_SEQ_BUF
-#define DECLARE_SEQ_BUF(name, size) \
-	char __##name##_buf[(size)] = {}; \
+#define DECLARE_SEQ_BUF(name, sz) \
+	char __##name##_buf[sz] = {}; \
 	struct seq_buf name = { \
 		.buffer = __##name##_buf, \
-		.size = (size), \
+		.size = sz, \
 	}
 #endif
 
@@ -36,6 +36,19 @@ static inline const char *seq_buf_str(struct seq_buf *s)
 	return s->buffer;
 }
 #endif
+
+/* Define missing structures and constants */
+#ifndef EDID_LENGTH
+#define EDID_LENGTH 128
+#endif
+
+struct drm_edid_product_id {
+	__be16 manufacturer_name;
+	__le16 product_code;
+	__le32 serial_number;
+	u8 week_of_manufacture;
+	u8 year_of_manufacture;
+};
 
 /* Stub implementations for missing functions */
 #ifndef drm_edid_decode_mfg_id
