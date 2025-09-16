@@ -212,6 +212,16 @@ jobs:
             HOSTCFLAGS="$HOSTCFLAGS_EXTRA" HOSTLDFLAGS="$HOSTLDFLAGS_EXTRA" \
             $MAKEFLAGS_COMMON olddefconfig 2>&1 | tee -a "$LOGDIR/prepare.log"
 
+          # Build scripts_basic to ensure host tools are available
+          make -C "$KDIR" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" \
+            HOSTCFLAGS="$HOSTCFLAGS_EXTRA" HOSTLDFLAGS="$HOSTLDFLAGS_EXTRA" \
+            $MAKEFLAGS_COMMON scripts_basic 2>&1 | tee -a "$LOGDIR/prepare.log"
+
+          # Prepare kernel headers (including linux/version.h)
+          make -C "$KDIR" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" \
+            HOSTCFLAGS="$HOSTCFLAGS_EXTRA" HOSTLDFLAGS="$HOSTLDFLAGS_EXTRA" \
+            $MAKEFLAGS_COMMON prepare 2>&1 | tee -a "$LOGDIR/prepare.log"
+
           # External modules_prepare (avoid objtool path)
           make -C "$KDIR" M="$GITHUB_WORKSPACE" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" \
             HOSTCFLAGS="$HOSTCFLAGS_EXTRA" HOSTLDFLAGS="$HOSTLDFLAGS_EXTRA" \
